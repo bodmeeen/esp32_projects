@@ -1,6 +1,10 @@
 #include <iostream>
 #include <random>
 #include <time.h>
+
+#include <unistd.h>
+#include <termios.h>
+
 using namespace std;
 
 //enum class Directions { Up, Down, Left, Right };
@@ -18,12 +22,35 @@ int player_score = 0;
 
 bool GameOver = false;
 
+struct termios orig_termios;
+
+void disableRawMode() {
+    tcsetattr(STDIN_FILENO, TCSAFLUSH, &orig_termios);
+}
+
+void enableRawMode() {
+    tcgetattr(STDIN_FILENO, &orig_termios);
+    // автоматично викликає ф-ю для виходу з raw mode перед виходом
+    atexit(disableRawMode);
+    
+    struct termios raw = orig_termios;
+    
+    // затримка перед рухом
+    raw.c_cc[VMIN] = 0;
+    raw.c_cc[VTIME] = 10;
+
+    // вихід з canon mode та заборона виводу введеного користувачем в термінал
+    raw.c_lflag &= ~(ECHO | ICANON);
+
+    tcsetattr(STDIN_FILENO, TCSAFLUSH, &raw);
+}
+
+
 
 void GameLogic() {
     srand(time(0));
     int fruitX = 1 + (rand() % 8);
     int fruitY = 1 + (rand() % 8);
-    
 
     while (!GameOver){
         cout << "\nSnake Game\n";
@@ -70,9 +97,33 @@ void GameLogic() {
             cout << endl;
         }
 
+        // задання базового напрямку руху, для того щоб на початку гри
+        // рух був навіть якщо користувач його не задав
         char user_inp;
+        
         cout << "\nТвій хід: \n";
-        cin >> user_inp;
+        
+        // зчитування вводу користувача замість cin для raw mode
+        read(STDIN_FILENO, &user_inp, 1) == 1;
+
+        char temp_inp;
+
+        // якщо користувач не задав напрямок, то рух продовжується в
+        // останньому заданому напрямку
+        if (read(STDIN_FILENO, &temp_inp, 1) == 1) {
+            user_inp = temp_inp;
+        }
+        // заборона розвороту на 180 градусів
+        if (temp_inp == 'w' && user_inp != 's') user_inp = temp_inp;
+        else if (temp_inp == 's' && user_inp != 'w') user_inp = temp_inp;
+        else if (temp_inp == 'a' && user_inp != 'd') user_inp = temp_inp;
+        else if (temp_inp == 'd' && user_inp != 'a') user_inp = temp_inp;
+
+        // // якщо користувач не задав напрямок, то рух продовжується в
+        // // останньому заданому напрямку
+        // if (read(STDIN_FILENO, &temp_inp, 1) == 1) {
+        //     user_inp = temp_inp;
+        // }
             
         switch (user_inp) {
             case 'w':
@@ -128,6 +179,7 @@ void GameLogic() {
 }
 
 int main() {
+    enableRawMode();
     GameLogic();
     return 0;
 }
